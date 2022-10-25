@@ -904,6 +904,9 @@ class Runtime:
             ty.uint32,
         )
 
+        self._next_store_id = 0
+        self._next_storage_id = 0
+
         self._barriers: List[legion.legion_phase_barrier_t] = []
         self.nccl_needs_barrier = bool(
             self._core_context.get_tunable(
@@ -1129,6 +1132,14 @@ class Runtime:
         self._unique_op_id += 1
         return op_id
 
+    def get_next_store_id(self) -> int:
+        self._next_store_id += 1
+        return self._next_store_id
+
+    def get_next_storage_id(self) -> int:
+        self._next_storage_id += 1
+        return self._next_storage_id
+
     def dispatch(self, op: Dispatchable[T]) -> T:
         self._attachment_manager.perform_detachments()
         self._attachment_manager.prune_detachments()
@@ -1266,8 +1277,11 @@ class Runtime:
             if optimize_scalar and shape is not None and shape.volume() == 1
             else RegionField
         )
-        storage = Storage(shape, 0, dtype, data=data, kind=kind)
+        storage = Storage(
+            self.get_next_storage_id(), shape, 0, dtype, data=data, kind=kind
+        )
         return Store(
+            self.get_next_store_id(),
             dtype,
             storage,
             shape=shape,
