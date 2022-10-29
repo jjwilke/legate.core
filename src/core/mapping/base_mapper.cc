@@ -273,23 +273,13 @@ void BaseMapper::slice_auto_task(const MapperContext ctx,
   if (task.sharding_space.exists())
     sharding_domain = runtime->get_index_space_domain(ctx, task.sharding_space);
 
-  if (nullptr != key_functor) {
-    auto lo = key_functor->project_point(sharding_domain.lo(), sharding_domain);
-    auto hi = key_functor->project_point(sharding_domain.hi(), sharding_domain);
-    for (Domain::DomainPointIterator itr(input.domain); itr; itr++) {
-      auto p   = key_functor->project_point(itr.p, sharding_domain);
-      auto idx = linearize(lo, hi, p) % size;
-      output.slices.push_back(TaskSlice(
-        Domain(itr.p, itr.p), avail_procs[idx - offset], false /*recurse*/, false /*stealable*/));
-    }
-  } else {
-    auto lo = sharding_domain.lo();
-    auto hi = sharding_domain.hi();
-    for (Domain::DomainPointIterator itr(input.domain); itr; itr++) {
-      auto idx = linearize(lo, hi, itr.p) % size;
-      output.slices.push_back(TaskSlice(
-        Domain(itr.p, itr.p), avail_procs[idx - offset], false /*recurse*/, false /*stealable*/));
-    }
+  auto lo = key_functor->project_point(sharding_domain.lo(), sharding_domain);
+  auto hi = key_functor->project_point(sharding_domain.hi(), sharding_domain);
+  for (Domain::DomainPointIterator itr(input.domain); itr; itr++) {
+    auto p   = key_functor->project_point(itr.p, sharding_domain);
+    auto idx = linearize(lo, hi, p) % size;
+    output.slices.push_back(TaskSlice(
+      Domain(itr.p, itr.p), avail_procs[idx - offset], false /*recurse*/, false /*stealable*/));
   }
 }
 
@@ -1108,16 +1098,11 @@ void BaseMapper::map_copy(const MapperContext ctx,
     // in which case we should find the key store and use its projection functor
     // for the linearization
     auto* key_functor = find_legate_projection_functor(0);
-
-    uint32_t idx = 0;
-    if (key_functor != nullptr) {
-      auto lo = key_functor->project_point(sharding_domain.lo(), sharding_domain);
-      auto hi = key_functor->project_point(sharding_domain.hi(), sharding_domain);
-      auto p  = key_functor->project_point(copy.index_point, sharding_domain);
-      idx     = linearize(lo, hi, p);
-    } else
-      idx = linearize(sharding_domain.lo(), sharding_domain.hi(), copy.index_point);
-    target_proc = avail_procs[(idx % size) - offset];
+    auto lo           = key_functor->project_point(sharding_domain.lo(), sharding_domain);
+    auto hi           = key_functor->project_point(sharding_domain.hi(), sharding_domain);
+    auto p            = key_functor->project_point(copy.index_point, sharding_domain);
+    uint32_t idx      = linearize(lo, hi, p);
+    target_proc       = avail_procs[(idx % size) - offset];
   }
 
   auto store_target = default_store_targets(target_proc.kind()).front();
