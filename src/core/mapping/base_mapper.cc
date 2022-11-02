@@ -257,12 +257,14 @@ void BaseMapper::slice_auto_task(const MapperContext ctx,
                                  const SliceTaskInput& input,
                                  SliceTaskOutput& output)
 {
-  LegateProjectionFunctor* key_functor = nullptr;
+  ProjectionID proj_id = 0;
   for (auto& req : task.regions)
     if (req.tag == LEGATE_CORE_KEY_STORE_TAG) {
-      key_functor = find_legate_projection_functor(req.projection);
+      proj_id = req.projection;
       break;
     }
+
+  auto key_functor = find_legate_projection_functor(proj_id);
 
   // For multi-node cases we should already have been sharded so we
   // should just have one or a few points here on this node, so iterate
