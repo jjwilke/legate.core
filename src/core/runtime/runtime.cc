@@ -158,13 +158,19 @@ void register_legate_core_tasks(Machine machine, Runtime* runtime, const Library
   };
 
   // Register the task variants
-  {
-    auto registrar =
-      make_registrar(extract_scalar_task_id, extract_scalar_task_name, Processor::LOC_PROC);
+  auto register_extract_scalar = [&](auto proc_kind, auto variant_id) {
+    auto registrar = make_registrar(extract_scalar_task_id, extract_scalar_task_name, proc_kind);
     Legion::CodeDescriptor desc(extract_scalar_task);
     runtime->register_task_variant(
-      registrar, desc, nullptr, 0, LEGATE_MAX_SIZE_SCALAR_RETURN, LEGATE_CPU_VARIANT);
-  }
+      registrar, desc, nullptr, 0, LEGATE_MAX_SIZE_SCALAR_RETURN, variant_id);
+  };
+  register_extract_scalar(Processor::LOC_PROC, LEGATE_CPU_VARIANT);
+#ifdef LEGATE_USE_CUDA
+  register_extract_scalar(Processor::TOC_PROC, LEGATE_GPU_VARIANT);
+#endif
+#ifdef LEGATE_USE_OPENMP
+  register_extract_scalar(Processor::OMP_PROC, LEGATE_OMP_VARIANT);
+#endif
   comm::register_tasks(machine, runtime, context);
 }
 

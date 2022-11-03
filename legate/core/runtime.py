@@ -55,7 +55,7 @@ from .allocation import Attachable
 from .communicator import CPUCommunicator, NCCLCommunicator
 from .corelib import core_library
 from .exception import PendingException
-from .machine import Machine
+from .machine import Machine, ProcessorKind
 from .projection import is_identity_projection, pack_symbolic_projection_repr
 from .restriction import Restriction
 from .shape import Shape
@@ -1136,6 +1136,15 @@ class Runtime:
     def machine(self) -> Machine:
         return self._machines[-1]
 
+    @property
+    def core_task_variant_id(self) -> int:
+        if self.machine.preferred_kind == ProcessorKind.GPU:
+            return self.core_library.LEGATE_GPU_VARIANT
+        if self.machine.preferred_kind == ProcessorKind.OMP:
+            return self.core_library.LEGATE_OMP_VARIANT
+        else:
+            return self.core_library.LEGATE_CPU_VARIANT
+
     def push_machine(self, machine: Machine) -> None:
         self._machines.append(machine)
 
@@ -1563,7 +1572,7 @@ class Runtime:
         launcher = TaskLauncher(
             self.core_context,
             self.core_library.LEGATE_CORE_EXTRACT_SCALAR_TASK_ID,
-            tag=self.core_library.LEGATE_CPU_VARIANT,
+            tag=self.core_task_variant_id,
         )
         launcher.add_future(future)
         launcher.add_scalar_arg(idx, ty.int32)
@@ -1577,7 +1586,7 @@ class Runtime:
         launcher = TaskLauncher(
             self.core_context,
             self.core_library.LEGATE_CORE_EXTRACT_SCALAR_TASK_ID,
-            tag=self.core_library.LEGATE_CPU_VARIANT,
+            tag=self.core_task_variant_id,
         )
         launcher.add_future_map(future)
         launcher.add_scalar_arg(idx, ty.int32)
