@@ -1681,8 +1681,29 @@ class Runtime:
         for pending in pending_exceptions:
             pending.raise_exception()
 
+    def begin_trace(self, id: int) -> None:
+        legion.legion_runtime_begin_trace(
+            self.legion_runtime, self.legion_context, id, False
+        )
+
+    def end_trace(self, id: int) -> None:
+        legion.legion_runtime_end_trace(
+            self.legion_runtime, self.legion_context, id
+        )
+
 
 runtime: Runtime = Runtime(core_library)
+
+
+class Trace:
+    def __init__(self, id: int):
+        self._id = id
+
+    def __enter__(self) -> None:
+        runtime.begin_trace(self._id)
+
+    def __exit__(self, _: Any, __: Any, ___: Any) -> None:
+        runtime.end_trace(self._id)
 
 
 def _cleanup_legate_runtime() -> None:

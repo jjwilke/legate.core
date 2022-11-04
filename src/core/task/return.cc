@@ -278,6 +278,29 @@ void ReturnValues::finalize(Context legion_context) const
   return_buffer.finalize(legion_context);
 }
 
+/*static*/ ReturnValue ReturnValues::extract(Legion::Future future, uint32_t to_extract)
+{
+  auto kind          = find_memory_kind_for_executing_processor();
+  const auto* buffer = future.get_buffer(kind);
+
+  auto ptr        = static_cast<const int8_t*>(buffer);
+  auto num_values = *reinterpret_cast<const uint32_t*>(ptr);
+  ptr += sizeof(uint32_t);
+
+  for (uint32_t idx = 0; idx < to_extract; ++idx) {
+    auto size = *reinterpret_cast<const uint32_t*>(ptr);
+    ptr += sizeof(uint32_t) + size;
+  }
+  auto ret_size = *reinterpret_cast<const uint32_t*>(ptr);
+  ptr += sizeof(uint32_t);
+
+  UntypedDeferredValue ret(ret_size, kind);
+  AccessorWO<int8_t, 1> acc(ret, ret_size, false);
+  memcpy(acc.ptr(0), ptr, ret_size);
+
+  return ReturnValue(ret, ret_size);
+}
+
 void register_exception_reduction_op(Runtime* runtime, const LibraryContext& context)
 {
   auto redop_id = context.get_reduction_op_id(LEGATE_CORE_JOIN_EXCEPTION_OP);

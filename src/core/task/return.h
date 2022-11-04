@@ -69,6 +69,9 @@ struct ReturnValues {
   // Calls the Legion postamble with an instance that packs all return values
   void finalize(Legion::Context legion_context) const;
 
+ public:
+  static ReturnValue extract(Legion::Future future, uint32_t to_extract);
+
  private:
   size_t buffer_size_{0};
   std::vector<ReturnValue> return_values_{};

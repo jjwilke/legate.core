@@ -22,6 +22,7 @@
 #include "core/task/exception.h"
 #include "core/task/task.h"
 #include "core/utilities/deserializer.h"
+#include "core/utilities/machine.h"
 #include "legate.h"
 
 namespace legate {
@@ -95,11 +96,11 @@ static void extract_scalar_task(
   Core::show_progress(task, legion_context, runtime, task->get_task_name());
 
   TaskContext context(task, *regions, legion_context, runtime);
-  auto values = task->futures[0].get_result<ReturnValues>();
-  auto idx    = context.scalars()[0].value<int32_t>();
+  auto idx            = context.scalars()[0].value<int32_t>();
+  auto value_and_size = ReturnValues::extract(task->futures[0], idx);
 
   // Legion postamble
-  ReturnValues({values[idx]}).finalize(legion_context);
+  value_and_size.first.finalize(legion_context);
 }
 
 /*static*/ void Core::shutdown(void)

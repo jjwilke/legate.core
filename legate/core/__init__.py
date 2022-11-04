@@ -76,6 +76,7 @@ from .legate import (
 )
 from .resource import ResourceConfig
 from .runtime import (
+    Trace,
     get_legate_runtime,
     get_legion_context,
     get_legion_runtime,

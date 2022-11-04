@@ -1369,6 +1369,7 @@ void BaseMapper::memoize_operation(const MapperContext ctx,
                                    const MemoizeInput& input,
                                    MemoizeOutput& output)
 {
+  // No must epoch launches in legate
   LEGATE_ABORT;
 }
 
