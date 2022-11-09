@@ -1399,13 +1399,35 @@ class Runtime:
             if optimize_scalar and shape is not None and shape.volume() == 1
             else RegionField
         )
+
+        sanitized_shape: Optional[Shape]
+        if kind is RegionField and shape is not None and shape.ndim == 0:
+            from .transform import Project, identity
+
+            # If the client requested a 0D region-backed store, we need to
+            # promote the shape to 1D to create the storage, as Legion
+            # doesn't allow 0D regions. And we also need to set up a transform
+            # to map "0D" points back to 1D so that the store looks like 0D
+            # to the client.
+            sanitized_shape = Shape([1])
+            transform = identity.stack(Project(0, 0))
+        else:
+            sanitized_shape = shape
+            transform = None
+
         storage = Storage(
-            self.get_next_storage_id(), shape, 0, dtype, data=data, kind=kind
+            self.get_next_storage_id(),
+            sanitized_shape,
+            0,
+            dtype,
+            data=data,
+            kind=kind,
         )
         return Store(
             self.get_next_store_id(),
             dtype,
             storage,
+            transform=transform,
             shape=shape,
             ndim=ndim,
         )

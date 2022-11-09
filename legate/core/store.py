@@ -18,6 +18,7 @@ import weakref
 from typing import TYPE_CHECKING, Any, Optional, Sequence, Type, Union
 
 from . import (
+    AffineTransform,
     Attach,
     Detach,
     Future,
@@ -42,7 +43,6 @@ from .transform import (
     Project,
     Promote,
     Shift,
-    TransformStack,
     Transpose,
     identity,
 )
@@ -50,7 +50,6 @@ from .types import _Dtype
 
 if TYPE_CHECKING:
     from . import (
-        AffineTransform,
         BufferBuilder,
         Partition as LegionPartition,
         PhysicalRegion,
@@ -826,9 +825,7 @@ class StorePartition:
         child_storage = self._storage_partition.get_child(color)
         child_transform = self.transform
         for dim, offset in enumerate(child_storage.offsets):
-            child_transform = TransformStack(
-                Shift(dim, -offset), child_transform
-            )
+            child_transform = child_transform.stack(Shift(dim, -offset))
         return Store(
             runtime.get_next_store_id(),
             self._store.type,
@@ -1083,7 +1080,7 @@ class Store:
             runtime.get_next_store_id(),
             self._dtype,
             self._storage,
-            TransformStack(transform, self._transform),
+            self._transform.stack(transform),
             shape=shape,
         )
 
@@ -1123,7 +1120,7 @@ class Store:
             runtime.get_next_store_id(),
             self._dtype,
             storage,
-            TransformStack(transform, self._transform),
+            self._transform.stack(transform),
             shape=shape,
         )
 
@@ -1167,7 +1164,7 @@ class Store:
         transform = (
             self._transform
             if start == 0
-            else TransformStack(Shift(dim, -start), self._transform)
+            else self._transform.stack(Shift(dim, -start))
         )
         return Store(
             runtime.get_next_store_id(),
@@ -1201,7 +1198,7 @@ class Store:
             runtime.get_next_store_id(),
             self._dtype,
             self._storage,
-            TransformStack(transform, self._transform),
+            self._transform.stack(transform),
             shape=shape,
         )
 
@@ -1228,7 +1225,7 @@ class Store:
             runtime.get_next_store_id(),
             self._dtype,
             self._storage,
-            TransformStack(transform, self._transform),
+            self._transform.stack(transform),
             shape=new_shape,
         )
 
