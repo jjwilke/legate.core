@@ -100,7 +100,7 @@ static void extract_scalar_task(
   auto value_and_size = ReturnValues::extract(task->futures[0], idx);
 
   // Legion postamble
-  value_and_size.first.finalize(legion_context);
+  value_and_size.finalize(legion_context);
 }
 
 /*static*/ void Core::shutdown(void)
@@ -124,9 +124,10 @@ static void extract_scalar_task(
   point_str << point[0];
   for (int32_t dim = 1; dim < task->index_point.dim; ++dim) point_str << "," << point[dim];
 
-  log_legate.print("%s %s task, pt = (%s), proc = " IDFMT,
+  log_legate.print("%s %s task [%s], pt = (%s), proc = " IDFMT,
                    task_name,
                    proc_kind_str,
+                   task->get_provenance_string().c_str(),
                    point_str.str().c_str(),
                    exec_proc.id);
 }
