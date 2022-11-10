@@ -27,7 +27,8 @@
 
 namespace legate {
 
-using LegionTask = Legion::Task;
+using LegionTask     = Legion::Task;
+using LegionMappable = Legion::Mappable;
 
 using namespace Legion;
 using namespace Legion::Mapping;
@@ -92,6 +93,10 @@ class CoreMapper : public Legion::Mapping::NullMapper {
                                        const LegionTask& task,
                                        const SelectShardingFunctorInput& input,
                                        SelectShardingFunctorOutput& output);
+  virtual void memoize_operation(const MapperContext ctx,
+                                 const LegionMappable& mappable,
+                                 const MemoizeInput& input,
+                                 MemoizeOutput& output);
   virtual void select_steal_targets(const MapperContext ctx,
                                     const SelectStealingInput& input,
                                     SelectStealingOutput& output);
@@ -363,6 +368,14 @@ void CoreMapper::select_sharding_functor(const MapperContext ctx,
 {
   mapping::Mappable legate_mappable(&task);
   output.chosen_functor = static_cast<ShardingID>(legate_mappable.sharding_id());
+}
+
+void CoreMapper::memoize_operation(const MapperContext ctx,
+                                   const LegionMappable& mappable,
+                                   const MemoizeInput& input,
+                                   MemoizeOutput& output)
+{
+  output.memoize = true;
 }
 
 void CoreMapper::select_steal_targets(const MapperContext ctx,

@@ -389,11 +389,15 @@ class Task(TaskProtocol):
                 idx += 1
             for red_idx in self.scalar_reductions:
                 (output, redop) = self.reductions[red_idx]
-                redop_id = output.type.reduction_op_id(redop)
                 data = runtime.extract_scalar_with_domain(
                     result, idx, launch_domain
                 )
-                output.set_storage(runtime.reduce_future_map(data, redop_id))
+                if redop == ty.ReductionOp.DEDUP:
+                    storage = data.get_future(launch_domain.lo)
+                else:
+                    redop_id = output.type.reduction_op_id(redop)
+                    storage = runtime.reduce_future_map(data, redop_id)
+                output.set_storage(storage)
                 idx += 1
             if self.can_raise_exception:
                 exn_fut_map = runtime.extract_scalar_with_domain(
@@ -767,6 +771,8 @@ class ManualTask(Operation, Task):
             self._reduction_parts, self._reduction_projs
         ):
             req = part.get_requirement(self.launch_ndim, proj_fn)
+            if redop == ty.ReductionOp.DEDUP:
+                redop = ty.ReductionOp.MAX
             req.redop = part.store.type.reduction_op_id(redop)
             can_read_write = part.is_disjoint_for(self._launch_domain)
             launcher.add_reduction(

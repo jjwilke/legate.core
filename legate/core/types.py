@@ -161,6 +161,7 @@ class ReductionOp(IntEnum):
     OR = legion.LEGION_REDOP_KIND_OR
     AND = legion.LEGION_REDOP_KIND_AND
     XOR = legion.LEGION_REDOP_KIND_XOR
+    DEDUP = -1
 
 
 # TODO: These should use the enum in legate_c.h
