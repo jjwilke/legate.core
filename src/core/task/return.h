@@ -91,11 +91,11 @@ struct ReturnValues {
   void legion_deserialize(const void* buffer);
 
  public:
-  // Calls the Legion postamble with an instance that packs all return values
-  void finalize(Legion::Context legion_context) const;
+  static ReturnValue extract(Legion::Future future, uint32_t to_extract);
 
  public:
-  static ReturnValue extract(Legion::Future future, uint32_t to_extract);
+  // Calls the Legion postamble with an instance that packs all return values
+  void finalize(Legion::Context legion_context) const;
 
  private:
   size_t buffer_size_{0};

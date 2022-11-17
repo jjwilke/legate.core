@@ -59,7 +59,7 @@ void ReturnValue::finalize(Legion::Context legion_context) const
 
 void* ReturnValue::ptr()
 {
-  AccessorWO<int8_t, 1> acc(value_, size_, false);
+  AccessorRW<int8_t, 1> acc(value_, size_, false);
   return acc.ptr(0);
 }
 
@@ -197,6 +197,17 @@ size_t ReturnValues::legion_buffer_size() const { return buffer_size_; }
 
 void ReturnValues::legion_serialize(void* buffer) const
 {
+  // We pack N return values into the buffer in the following format:
+  //
+  // +--------+-----------+-----+------------+-------+-------+-------+-----
+  // |   #    | offset to |     | offset to  | total | value | value | ...
+  // | values | scalar 1  | ... | scalar N-1 | value |   1   |   2   |
+  // |        |           |     |            | size  |       |       |
+  // +--------+-----------+-----+------------+-------+-------+-------+-----
+  //           <============ offsets ===============> <==== values =======>
+  //
+  // the size of value i is computed by offsets[i] - (i == 0 ? 0 : offsets[i-1])
+
 #ifdef LEGATE_USE_CUDA
   auto stream = cuda::StreamPool::get_stream_pool().get_stream();
 #endif
@@ -253,6 +264,24 @@ void ReturnValues::legion_deserialize(const void* buffer)
   }
 }
 
+/*static*/ ReturnValue ReturnValues::extract(Legion::Future future, uint32_t to_extract)
+{
+  auto kind          = find_memory_kind_for_executing_processor();
+  const auto* buffer = future.get_buffer(kind);
+
+  auto ptr        = static_cast<const int8_t*>(buffer);
+  auto num_values = *reinterpret_cast<const uint32_t*>(ptr);
+
+  auto offsets = reinterpret_cast<const uint32_t*>(ptr + sizeof(uint32_t));
+  auto values  = ptr + sizeof(uint32_t) + sizeof(uint32_t) * num_values;
+
+  uint32_t next_offset = offsets[to_extract];
+  uint32_t offset      = to_extract == 0 ? 0 : offsets[to_extract - 1];
+  uint32_t size        = next_offset - offset;
+
+  return ReturnValue::unpack(values + offset, size, kind);
+}
+
 void ReturnValues::finalize(Context legion_context) const
 {
   if (return_values_.empty()) {
@@ -278,24 +307,6 @@ void ReturnValues::finalize(Context legion_context) const
   AccessorWO<int8_t, 1> acc(return_buffer, return_size, false);
   legion_serialize(acc.ptr(0));
   return_buffer.finalize(legion_context);
-}
-
-/*static*/ ReturnValue ReturnValues::extract(Legion::Future future, uint32_t to_extract)
-{
-  auto kind          = find_memory_kind_for_executing_processor();
-  const auto* buffer = future.get_buffer(kind);
-
-  auto ptr        = static_cast<const int8_t*>(buffer);
-  auto num_values = *reinterpret_cast<const uint32_t*>(ptr);
-
-  auto offsets = reinterpret_cast<const uint32_t*>(ptr + sizeof(uint32_t));
-  auto values  = ptr + sizeof(uint32_t) + sizeof(uint32_t) * num_values;
-
-  uint32_t next_offset = offsets[to_extract];
-  uint32_t offset      = to_extract == 0 ? 0 : offsets[to_extract - 1];
-  uint32_t size        = next_offset - offset;
-
-  return ReturnValue::unpack(values + offset, size, kind);
 }
 
 void register_exception_reduction_op(Runtime* runtime, const LibraryContext& context)
