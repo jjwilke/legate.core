@@ -250,6 +250,7 @@ class Task(TaskProtocol):
         self._tb_repr: Union[None, str] = None
         self._side_effect = False
         self._concurrent = False
+        self._exit_barrier = False
 
     @property
     def side_effect(self) -> bool:
@@ -264,6 +265,13 @@ class Task(TaskProtocol):
 
     def set_concurrent(self, concurrent: bool) -> None:
         self._concurrent = concurrent
+
+    @property
+    def exit_barrier(self) -> bool:
+        return self._exit_barrier
+
+    def set_exit_barrier(self, exit_barrier: bool) -> None:
+        self._exit_barrier = exit_barrier
 
     def get_name(self) -> str:
         libname = self.context.library.get_name()
@@ -637,6 +645,7 @@ class AutoTask(AutoOperation, Task):
 
         launcher.set_can_raise_exception(self.can_raise_exception)
         launcher.set_concurrent(self.concurrent)
+        launcher.set_exit_barrier(self.exit_barrier)
 
         launch_domain = strategy.launch_domain if strategy.parallel else None
         self._add_communicators(launcher, launch_domain)
@@ -792,6 +801,7 @@ class ManualTask(Operation, Task):
 
         launcher.set_can_raise_exception(self.can_raise_exception)
         launcher.set_concurrent(self.concurrent)
+        launcher.set_exit_barrier(self.exit_barrier)
 
         self._add_communicators(launcher, self._launch_domain)
 

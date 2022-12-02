@@ -149,6 +149,8 @@ class LegateTask {
 
     // Legion postamble
     return_values.finalize(legion_context);
+
+    context.exit_barrier();
   }
 
  public:

@@ -734,6 +734,7 @@ class TaskLauncher:
         self._can_raise_exception = False
         self._provenance = provenance
         self._concurrent = False
+        self._exit_barrier = False
 
     @property
     def library_task_id(self) -> int:
@@ -888,6 +889,9 @@ class TaskLauncher:
     def set_concurrent(self, concurrent: bool) -> None:
         self._concurrent = concurrent
 
+    def set_exit_barrier(self, exit_barrier: bool) -> None:
+        self._exit_barrier = exit_barrier
+
     def set_sharding_space(self, space: IndexSpace) -> None:
         self._sharding_space = space
 
@@ -916,6 +920,7 @@ class TaskLauncher:
         argbuf.pack_bool(self._can_raise_exception)
         argbuf.pack_bool(self._insert_barrier)
         argbuf.pack_32bit_uint(len(self._comms))
+        argbuf.pack_bool(self._exit_barrier)
 
         task = IndexTask(
             self.legion_task_id,
@@ -935,6 +940,11 @@ class TaskLauncher:
         for future in self._future_args:
             task.add_future(future)
         if self._insert_barrier:
+            volume = launch_domain.get_volume()
+            arrival, wait = runtime.get_barriers(volume)
+            task.add_future(arrival)
+            task.add_future(wait)
+        if self._exit_barrier:
             volume = launch_domain.get_volume()
             arrival, wait = runtime.get_barriers(volume)
             task.add_future(arrival)

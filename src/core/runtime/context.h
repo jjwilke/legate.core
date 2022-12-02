@@ -141,6 +141,9 @@ class TaskContext {
   const mapping::MachineDesc& machine_desc() const { return machine_desc_; }
 
  public:
+  void exit_barrier();
+
+ public:
   void make_all_unbound_stores_empty();
   ReturnValues pack_return_values() const;
   ReturnValues pack_return_values_with_exception(int32_t index,
@@ -161,6 +164,8 @@ class TaskContext {
   std::vector<comm::Communicator> comms_;
   bool can_raise_exception_;
   mapping::MachineDesc machine_desc_;
+  bool has_exit_barrier_;
+  Legion::PhaseBarrier exit_arrival_, exit_wait_;
 };
 
 }  // namespace legate

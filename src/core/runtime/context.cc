@@ -184,7 +184,12 @@ TaskContext::TaskContext(const Legion::Task* task,
       arrival = dez.unpack<Legion::PhaseBarrier>();
       wait    = dez.unpack<Legion::PhaseBarrier>();
     }
-    comms_ = dez.unpack<std::vector<comm::Communicator>>();
+    comms_            = dez.unpack<std::vector<comm::Communicator>>();
+    has_exit_barrier_ = dez.unpack<bool>();
+    if (has_exit_barrier_) {
+      exit_arrival_ = dez.unpack<Legion::PhaseBarrier>();
+      exit_wait_    = dez.unpack<Legion::PhaseBarrier>();
+    }
   }
 
   // For reduction tree cases, some input stores may be mapped to NO_REGION
@@ -223,6 +228,14 @@ bool TaskContext::is_single_task() const { return !task_->is_index_space; }
 Legion::DomainPoint TaskContext::get_task_index() const { return task_->index_point; }
 
 Legion::Domain TaskContext::get_launch_domain() const { return task_->index_domain; }
+
+void TaskContext::exit_barrier()
+{
+  if (has_exit_barrier_) {
+    exit_arrival_.arrive();
+    exit_wait_.wait();
+  }
+}
 
 void TaskContext::make_all_unbound_stores_empty()
 {
