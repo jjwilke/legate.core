@@ -1351,7 +1351,6 @@ class Store:
     def partition_by_tiling(
         self,
         tile_shape: Union[Shape, Sequence[int]],
-        set_key_partition: bool = False,
     ) -> StorePartition:
         if self.unbound:
             raise TypeError("Unbound store cannot be manually partitioned")
@@ -1359,6 +1358,4 @@ class Store:
             tile_shape = Shape(tile_shape)
         launch_shape = (self.shape + tile_shape - 1) // tile_shape
         partition = Tiling(tile_shape, launch_shape)
-        if set_key_partition:
-            self.set_key_partition(partition)
         return self.partition(partition)
