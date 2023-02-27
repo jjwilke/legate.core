@@ -76,15 +76,17 @@ std::string log_mappable(const LegionMappable& mappable, bool prefix_only = fals
 
 }  // namespace
 
-BaseMapper::BaseMapper(Runtime* rt, Legion::Machine m, const LibraryContext& ctx)
+BaseMapper::BaseMapper(Runtime* rt, Legion::Machine m, const LibraryContext& ctx, const BaseMapperConfig& config)
   : Mapper(rt->get_mapper_runtime()),
     legion_runtime(rt),
     legion_machine(m),
+    config_(config),
     context(ctx),
     logger(create_logger_name().c_str()),
     local_instances(InstanceManager::get_instance_manager()),
     reduction_instances(ReductionInstanceManager::get_instance_manager()),
-    machine(std::make_unique<Machine>(m))
+    machine(std::make_unique<Machine>(m)),
+    next_group_id_(1)
 {
   std::stringstream ss;
   ss << context.get_library_name() << " on Node " << machine->local_node;
@@ -116,6 +118,124 @@ BaseMapper::~BaseMapper(void)
         100.0 * double(pair.second) / capacity);
     }
   }
+}
+
+std::vector<StoreMapping> BaseMapper::store_mappings(const Task &task, const std::vector<StoreTarget> &options){
+  std::vector<StoreMapping> mappings;
+  if (config_.single_store_per_mapping){
+    // Gives each Store its own StoreMapping
+    auto& inputs  = task.inputs();
+    auto& outputs = task.outputs();
+    for (auto& input : inputs) {
+      mappings.push_back(StoreMapping::default_mapping(input, options.front()));
+    }
+    for (auto& output : outputs) {
+      mappings.push_back(StoreMapping::default_mapping(output, options.front()));
+    }
+
+    for (auto& mapping : mappings){
+        mapping.policy.contiguous = config_.default_contiguous;
+        mapping.policy.exact = true;
+    }
+
+    return mappings;
+  }
+
+  static constexpr uint32_t unassigned{-1U};
+  size_t max_num_requirements = task.inputs().size() + task.outputs().size() + task.reductions().size();
+  if (config_.disjoint_instances){
+    // Groups together as many stores as possible into the same mapping by
+    // grouping according to requirement index. This ensures, though, that
+    // all StoreMappings are disjoint from any previous StoreMappings. Consider
+    // the following sequence of tasks mapping the same logical region:
+    // 1) Fields A,B (2 stores)
+    // 2) Fields B,C,D (3 stores)
+    // 3) Fields C,D (2 stores)
+    // A,B would be grouped together into 1 StoreMapping in Task 1 since
+    // they share the same RegionRequirement.
+    // In Task 2, B was previously mapped into an instance with A,B
+    // and would stay disjoint from C,D. B would get its own StoreMapping
+    // and C,D would be grouped in another StoreMapping for Task 2.
+    // Finally, C,D would be grouped together again in a single StoreMapping
+    // in Task 3.
+    std::vector<uint32_t> requirement_to_group(max_num_requirements, 0);
+    std::unordered_map<uint32_t,uint32_t> group_to_mapping;
+    auto visit = [&](const legate::mapping::Store& store) {
+      auto idx = store.requirement_index();
+      if (idx == unassigned) {
+        mappings.push_back(StoreMapping::default_mapping(store, options.front()));
+        return;
+      }
+
+      auto field_id = store.region_field().field_id();
+      auto tree_id = store.region_field().get_requirement()->region.get_tree_id();
+
+      uint32_t& group_id = groups_[tree_id][field_id];
+      if (group_id == 0){
+        // This region field was never used in a previous task.
+        // See if this requirement index was assigned a group in this task
+        group_id = requirement_to_group[idx];
+        if (group_id == 0){
+          // This is the first Store seen in this task for this requirement index
+          // without a previous mapping. This starts a new StoreMapping.
+          group_id = next_group_id_++;
+          requirement_to_group[idx] = group_id;
+          group_to_mapping[group_id] = mappings.size();
+          mappings.push_back(StoreMapping::default_mapping(store, options.front()));
+        } else {
+          auto& mapping = mappings[group_to_mapping[group_id]];
+          mapping.stores.push_back(store);
+        }
+      } else {
+        // This was used in a previous task and therefore has an existing instance with other stores.
+        auto iter = group_to_mapping.find(group_id);
+        if (iter == group_to_mapping.end()){
+          // This is the first store from the group to be mapped in this task.
+          // Starts a new StoreMapping.
+          group_to_mapping[group_id] = mappings.size();
+          mappings.push_back(StoreMapping::default_mapping(store, options.front()));
+        } else {
+          // Another store from this group has already been seen for this task.
+          // Append this to the previous StoreMapping.
+          mappings[iter->second].stores.push_back(store);
+        }
+      }
+    };
+    for (auto& input : task.inputs()) { visit(input); }
+    for (auto& output : task.outputs()) { visit(output); }
+
+    for (auto& mapping : mappings){
+        mapping.policy.contiguous = config_.default_contiguous;
+    }
+
+    return mappings;
+  }
+
+  // If here, we group together all Stores sharing a region requirement into
+  // a single StoreMapping regardless of what instances were created in
+  // previous tasks.
+  std::vector<int64_t> requirement_to_mapping(max_num_requirements, -1);
+  auto visit = [&](const legate::mapping::Store& store) {
+    auto idx = store.requirement_index();
+    if (idx == unassigned) {
+      mappings.push_back(StoreMapping::default_mapping(store, options.front()));
+    } else if (requirement_to_mapping[idx] == -1) {
+      requirement_to_mapping[idx] = mappings.size();
+      mappings.push_back(StoreMapping::default_mapping(store, options.front()));
+    } else {
+      auto& mapping = mappings[requirement_to_mapping[idx]];
+      mapping.stores.push_back(store);
+    }
+  };
+
+  for (auto& input : task.inputs()) { visit(input); }
+  for (auto& output : task.outputs()) { visit(output); }
+
+  for (auto& mapping : mappings){
+      mapping.policy.contiguous = config_.default_contiguous;
+  }
+
+  return mappings;
 }
 
 std::string BaseMapper::create_logger_name() const
@@ -422,8 +542,9 @@ void BaseMapper::map_task(const MapperContext ctx,
 
   output.chosen_instances.resize(task.regions.size());
   std::map<const RegionRequirement*, std::vector<PhysicalInstance>*> output_map;
-  for (uint32_t idx = 0; idx < task.regions.size(); ++idx)
+  for (uint32_t idx = 0; idx < task.regions.size(); ++idx){
     output_map[&task.regions[idx]] = &output.chosen_instances[idx];
+  }
 
   map_legate_stores(ctx, task, for_stores, task.target_proc, output_map);
 }
@@ -483,7 +604,9 @@ void BaseMapper::map_legate_stores(const MapperContext ctx,
     for (uint32_t idx = 0; idx < mappings.size(); ++idx) {
       auto& mapping  = mappings[idx];
       auto& instance = instances[idx];
-      for (auto& req : mapping.requirements()) output_map[req]->push_back(instance);
+      for (const auto* req : mapping.requirements()){
+        output_map[req]->push_back(instance);
+      }
     }
     return true;
   };

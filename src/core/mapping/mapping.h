@@ -96,6 +96,7 @@ struct InstanceMappingPolicy {
   InstLayout layout{InstLayout::SOA};
   DimOrdering ordering{};
   bool exact{false};
+  bool contiguous{true};
 
  public:
   InstanceMappingPolicy() {}

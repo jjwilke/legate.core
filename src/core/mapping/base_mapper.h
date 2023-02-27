@@ -34,9 +34,17 @@ class InstanceManager;
 class Machine;
 class ReductionInstanceManager;
 
+
+struct BaseMapperConfig {
+  bool default_contiguous = true;
+  bool single_store_per_mapping = true;
+  bool disjoint_instances = true;
+};
+
 class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
  public:
-  BaseMapper(Legion::Runtime* rt, Legion::Machine machine, const LibraryContext& context);
+  BaseMapper(Legion::Runtime* rt, Legion::Machine machine, const LibraryContext& context, const BaseMapperConfig& config = BaseMapperConfig());
+
   virtual ~BaseMapper(void);
 
  private:
@@ -54,6 +62,9 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
   virtual bool request_valid_instances(void) const override { return false; }
 
  public:  // Task mapping calls
+  virtual std::vector<StoreMapping> store_mappings(const Task& task,
+                                                   const std::vector<StoreTarget>& options) override;
+
   virtual void select_task_options(const Legion::Mapping::MapperContext ctx,
                                    const Legion::Task& task,
                                    TaskOptions& output) override;
@@ -315,6 +326,10 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
 
  private:
   std::string mapper_name;
+
+  BaseMapperConfig config_;
+  std::unordered_map<uint32_t, std::unordered_map<Legion::FieldID, uint32_t>> groups_;
+  uint32_t next_group_id_;
 
  protected:
   using VariantCacheKey = std::pair<Legion::TaskID, Legion::Processor::Kind>;

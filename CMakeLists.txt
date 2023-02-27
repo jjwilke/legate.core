@@ -121,7 +121,7 @@ function(legate_test name)
   set(test_name "${name}_test")
   set(SOURCES "${test_name}.cc")
   add_executable(${test_name} ${SOURCES})
-  target_link_libraries(${test_name} legate::core GTest::gtest)
+  target_link_libraries(${test_name} legate::core GTest::gtest GTest::gmock)
   add_test(NAME ${name} COMMAND ${test_name})
 endfunction()
 

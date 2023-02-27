@@ -98,7 +98,7 @@ void InstanceMappingPolicy::populate_layout_constraints(
   ordering.populate_dimension_ordering(store, dimension_ordering);
   if (layout == InstLayout::SOA) dimension_ordering.push_back(DIM_F);
 
-  layout_constraints.add_constraint(OrderingConstraint(dimension_ordering, false /*contiguous*/));
+  layout_constraints.add_constraint(OrderingConstraint(dimension_ordering, contiguous));
 
   layout_constraints.add_constraint(MemoryConstraint(get_memory_kind(target)));
 }
@@ -189,7 +189,7 @@ void StoreMapping::populate_layout_constraints(
     }
   } else
     fields.push_back(stores.front().region_field().field_id());
-  layout_constraints.add_constraint(FieldConstraint(fields, true /*contiguous*/));
+  layout_constraints.add_constraint(FieldConstraint(fields, policy.contiguous));
 }
 
 /*static*/ StoreMapping StoreMapping::default_mapping(const Store& store,
