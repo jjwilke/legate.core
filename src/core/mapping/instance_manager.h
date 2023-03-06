@@ -181,11 +181,17 @@ class InstanceManager : public BaseInstanceManager {
   using RegionGroupP = std::shared_ptr<RegionGroup>;
 
  public:
+  std::optional<Instance> find_store_mapping(const StoreMapping& mapping,
+                                             Memory memory,
+                                             const std::vector<Region>& regions,
+                                             const std::vector<FieldID>& fields);
+
   bool find_instance(Region region,
                      FieldID field_id,
                      Memory memory,
                      Instance& result,
                      const InstanceMappingPolicy& policy = {});
+
   RegionGroupP find_region_group(const Region& region,
                                  const Domain& domain,
                                  FieldID field_id,
@@ -195,6 +201,8 @@ class InstanceManager : public BaseInstanceManager {
                                      FieldID field_id,
                                      Instance instance,
                                      const InstanceMappingPolicy& policy = {});
+
+  void record_instance(const StoreMapping& mapping, Memory memory, Instance instance);
 
  public:
   void erase(Instance inst);
@@ -207,6 +215,32 @@ class InstanceManager : public BaseInstanceManager {
 
  private:
   std::map<FieldMemInfo, InstanceSet> instance_sets_{};
+
+  struct StoreMappingGroup {
+    uint32_t group_id;
+    Memory memory;
+    InstanceMappingPolicy policy;
+
+    bool operator==(const StoreMappingGroup& other) const
+    {
+      return group_id == other.group_id &&
+             memory == other.memory;  // && other.policy.ordering == policy.ordering &&
+                                      // policy.layout == other.policy.layout;
+    }
+  };
+
+  struct StoreMappingGroupHash {
+    size_t operator()(const StoreMappingGroup& group) const
+    {
+      size_t hash = store_hash_combine(0, group.group_id);
+      hash        = store_hash_combine(hash, group.memory.id);
+      // hash = store_hash_combine(hash, group.policy.ordering.kind);
+      // hash = store_hash_combine(hash, group.policy.layout);
+      return hash;
+    }
+  };
+
+  std::unordered_map<StoreMappingGroup, Instance, StoreMappingGroupHash> group_instances_;
 };
 
 class ReductionInstanceManager : public BaseInstanceManager {

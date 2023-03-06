@@ -97,6 +97,7 @@ struct InstanceMappingPolicy {
   DimOrdering ordering{};
   bool exact{false};
   bool contiguous{true};
+  bool inorder{true};
 
  public:
   InstanceMappingPolicy() {}
@@ -121,13 +122,26 @@ struct InstanceMappingPolicy {
   static InstanceMappingPolicy default_policy(StoreTarget target, bool exact = false);
 };
 
+template <class T>
+size_t store_hash_combine(size_t hash, T t)
+{
+  return std::hash<T>()(t) ^ hash;
+}
+
 struct StoreMapping {
  public:
   std::vector<Store> stores{};
   InstanceMappingPolicy policy;
 
+  static constexpr uint32_t kNoGroup = 0;
+
  public:
-  StoreMapping() {}
+  struct StoreMappingConfig {
+    StoreTarget target;
+    bool exact        = false;
+    uint32_t group_id = kNoGroup;
+  };
+  StoreMapping(uint32_t group_id = kNoGroup) : group_id_(group_id) {}
 
  public:
   StoreMapping(const StoreMapping&)            = default;
@@ -146,12 +160,18 @@ struct StoreMapping {
   uint32_t requirement_index() const;
   std::set<uint32_t> requirement_indices() const;
   std::set<const Legion::RegionRequirement*> requirements() const;
+  bool has_group() const { return group_id_ != kNoGroup; }
+  uint32_t group_id() const { return group_id_; }
 
  public:
   void populate_layout_constraints(Legion::LayoutConstraintSet& layout_constraints) const;
 
  public:
   static StoreMapping default_mapping(const Store& store, StoreTarget target, bool exact = false);
+  static StoreMapping default_mapping(const Store& store, const StoreMappingConfig& config);
+
+ private:
+  uint32_t group_id_;
 };
 
 struct LegateMapper {
@@ -161,6 +181,26 @@ struct LegateMapper {
                                                    const std::vector<StoreTarget>& options) = 0;
   virtual Scalar tunable_value(TunableID tunable_id)                                        = 0;
 };
+
+struct Debug {};
+extern Debug detail_debug;
+
+template <class T>
+Debug& operator<<(Debug& debug, const T& t)
+{
+#if 0
+  std::cout << t;
+#endif
+  return debug;
+}
+
+static inline Debug& operator<<(Debug& debug, std::ostream& (*pf)(std::ostream&))
+{
+#if 0
+  std::cout << pf;
+#endif
+  return debug;
+}
 
 }  // namespace mapping
 }  // namespace legate

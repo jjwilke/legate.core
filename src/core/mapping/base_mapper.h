@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 #include "legion.h"
 
@@ -34,16 +35,20 @@ class InstanceManager;
 class Machine;
 class ReductionInstanceManager;
 
-
 struct BaseMapperConfig {
-  bool default_contiguous = true;
-  bool single_store_per_mapping = true;
-  bool disjoint_instances = true;
+  bool default_contiguous           = true;
+  bool single_store_per_mapping     = true;
+  bool disjoint_instances           = true;
+  bool force_alloc_on_single_fields = false;
+  bool default_inorder              = true;
 };
 
 class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
  public:
-  BaseMapper(Legion::Runtime* rt, Legion::Machine machine, const LibraryContext& context, const BaseMapperConfig& config = BaseMapperConfig());
+  BaseMapper(Legion::Runtime* rt,
+             Legion::Machine machine,
+             const LibraryContext& context,
+             const BaseMapperConfig& config = BaseMapperConfig());
 
   virtual ~BaseMapper(void);
 
@@ -62,8 +67,8 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
   virtual bool request_valid_instances(void) const override { return false; }
 
  public:  // Task mapping calls
-  virtual std::vector<StoreMapping> store_mappings(const Task& task,
-                                                   const std::vector<StoreTarget>& options) override;
+  virtual std::vector<StoreMapping> store_mappings(
+    const Task& task, const std::vector<StoreTarget>& options) override;
 
   virtual void select_task_options(const Legion::Mapping::MapperContext ctx,
                                    const Legion::Task& task,
@@ -327,8 +332,31 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
  private:
   std::string mapper_name;
 
+  struct StoreCacheId {
+    uint32_t tree_id;
+    uint32_t index_space_id;
+    Legion::FieldID field_id;
+    int redop{0};
+
+    bool operator==(const StoreCacheId& other) const
+    {
+      return other.field_id == field_id && other.index_space_id == index_space_id &&
+             other.tree_id == tree_id && other.redop == redop;
+    }
+  };
+
+  struct HashStoreCacheId {
+    size_t operator()(const StoreCacheId& id) const
+    {
+      size_t hash = store_hash_combine(0, id.tree_id);
+      hash        = store_hash_combine(hash, id.field_id);
+      hash        = store_hash_combine(hash, id.redop);
+      return store_hash_combine(hash, id.index_space_id);
+    }
+  };
+
   BaseMapperConfig config_;
-  std::unordered_map<uint32_t, std::unordered_map<Legion::FieldID, uint32_t>> groups_;
+  std::unordered_map<StoreCacheId, uint32_t, HashStoreCacheId> groups_;
   uint32_t next_group_id_;
 
  protected:

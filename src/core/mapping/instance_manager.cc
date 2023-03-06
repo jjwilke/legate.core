@@ -15,6 +15,7 @@
  */
 
 #include "core/mapping/instance_manager.h"
+#include "core/mapping/mapping.h"
 #include "core/utilities/dispatch.h"
 
 namespace legate {
@@ -330,6 +331,55 @@ void ReductionInstanceSet::record_instance(ReductionOpID& redop,
     }
   } else {
     instances_[region] = ReductionInstanceSpec(redop, instance, policy);
+  }
+}
+
+std::optional<InstanceManager::Instance> InstanceManager::find_store_mapping(
+  const StoreMapping& mapping,
+  Memory memory,
+  const std::vector<Region>& regions,
+  const std::vector<FieldID>& fields)
+{
+  std::optional<Instance> ret;
+  if (mapping.has_group()) {
+    // If custom ordering, we don't support that yet
+    if (mapping.policy.ordering.kind == DimOrdering::Kind::CUSTOM) { return ret; }
+
+    auto iter = group_instances_.find(
+      {.group_id = mapping.group_id(), .memory = memory, .policy = mapping.policy});
+    if (iter != group_instances_.end()) {
+      detail_debug << "Found group region of size " << mapping.stores.size() << " for group "
+                   << mapping.group_id() << " on memory=" << memory.id << "," << memory.kind()
+                   << std::endl;
+      return iter->second;
+    } else {
+      detail_debug << "Make new group region of size " << mapping.stores.size() << " for group "
+                   << mapping.group_id() << " on memory=" << memory.id << "," << memory.kind()
+                   << std::endl;
+    }
+  } else if (fields.size() == 1 && regions.size() == 1) {
+    Instance instance;
+    bool found = find_instance(regions.front(), fields.front(), memory, instance, mapping.policy);
+    if (found) {
+      ret.emplace(std::move(instance));
+      detail_debug << "Found group region of size 1" << std::endl;
+    } else {
+      detail_debug << "Make new group region of size 1" << std::endl;
+    }
+    return ret;
+  }
+
+  // Not a group or we weren't able to find it
+  return ret;
+}
+
+void InstanceManager::record_instance(const StoreMapping& mapping, Memory memory, Instance instance)
+{
+  if (mapping.policy.ordering.kind == DimOrdering::Kind::CUSTOM) { return; }
+
+  if (mapping.has_group()) {
+    group_instances_[{.group_id = mapping.group_id(), .memory = memory, .policy = mapping.policy}] =
+      instance;
   }
 }
 

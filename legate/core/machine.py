@@ -143,6 +143,12 @@ class Machine:
         return True
 
     @property
+    def num_procs(self) -> int:
+        range = self.get_processor_range()
+        return (range.hi - range.lo + 1)
+
+
+    @property
     def preferred_kind(self) -> ProcessorKind:
         return self._preferred_kind
 

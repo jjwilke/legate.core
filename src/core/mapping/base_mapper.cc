@@ -76,7 +76,10 @@ std::string log_mappable(const LegionMappable& mappable, bool prefix_only = fals
 
 }  // namespace
 
-BaseMapper::BaseMapper(Runtime* rt, Legion::Machine m, const LibraryContext& ctx, const BaseMapperConfig& config)
+BaseMapper::BaseMapper(Runtime* rt,
+                       Legion::Machine m,
+                       const LibraryContext& ctx,
+                       const BaseMapperConfig& config)
   : Mapper(rt->get_mapper_runtime()),
     legion_runtime(rt),
     legion_machine(m),
@@ -120,9 +123,11 @@ BaseMapper::~BaseMapper(void)
   }
 }
 
-std::vector<StoreMapping> BaseMapper::store_mappings(const Task &task, const std::vector<StoreTarget> &options){
+std::vector<StoreMapping> BaseMapper::store_mappings(const Task& task,
+                                                     const std::vector<StoreTarget>& options)
+{
   std::vector<StoreMapping> mappings;
-  if (config_.single_store_per_mapping){
+  if (config_.single_store_per_mapping) {
     // Gives each Store its own StoreMapping
     auto& inputs  = task.inputs();
     auto& outputs = task.outputs();
@@ -133,17 +138,37 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task &task, const std
       mappings.push_back(StoreMapping::default_mapping(output, options.front()));
     }
 
-    for (auto& mapping : mappings){
-        mapping.policy.contiguous = config_.default_contiguous;
-        mapping.policy.exact = true;
+    for (auto& mapping : mappings) {
+      mapping.policy.contiguous = config_.default_contiguous;
+      mapping.policy.exact      = true;
+      mapping.policy.inorder    = config_.default_inorder;
     }
 
     return mappings;
   }
 
+  struct MappingGroup {
+    uint32_t group_id;
+    int32_t redop{0};
+
+    bool operator==(const MappingGroup& other) const
+    {
+      return group_id == other.group_id && redop == other.redop;
+    }
+  };
+
+  struct MappingGroupHash {
+    size_t operator()(const MappingGroup& group) const
+    {
+      size_t hash = store_hash_combine(0, group.group_id);
+      return store_hash_combine(hash, group.redop);
+    }
+  };
+
   static constexpr uint32_t unassigned{-1U};
-  size_t max_num_requirements = task.inputs().size() + task.outputs().size() + task.reductions().size();
-  if (config_.disjoint_instances){
+  size_t max_num_requirements =
+    task.inputs().size() + task.outputs().size() + task.reductions().size();
+  if (config_.disjoint_instances) {
     // Groups together as many stores as possible into the same mapping by
     // grouping according to requirement index. This ensures, though, that
     // all StoreMappings are disjoint from any previous StoreMappings. Consider
@@ -159,53 +184,65 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task &task, const std
     // Finally, C,D would be grouped together again in a single StoreMapping
     // in Task 3.
     std::vector<uint32_t> requirement_to_group(max_num_requirements, 0);
-    std::unordered_map<uint32_t,uint32_t> group_to_mapping;
-    auto visit = [&](const legate::mapping::Store& store) {
+    std::unordered_map<MappingGroup, uint32_t, MappingGroupHash> group_to_mapping;
+    auto visit = [&](const char* type, const legate::mapping::Store& store) {
+      if (store.is_future()) { return; }
+
       auto idx = store.requirement_index();
+
       if (idx == unassigned) {
         mappings.push_back(StoreMapping::default_mapping(store, options.front()));
         return;
       }
 
-      auto field_id = store.region_field().field_id();
-      auto tree_id = store.region_field().get_requirement()->region.get_tree_id();
+      auto field_id       = store.region_field().field_id();
+      auto index_space_id = store.region_field().get_index_space().get_id();
+      auto tree_id        = store.region_field().get_requirement()->region.get_tree_id();
+      detail_debug << "map store " << index_space_id << "," << field_id << "," << tree_id
+                   << " for redop=" << store.redop() << std::endl;
 
-      uint32_t& group_id = groups_[tree_id][field_id];
-      if (group_id == 0){
+      uint32_t& group_id =
+        groups_[{.tree_id = tree_id, .index_space_id = index_space_id, .field_id = field_id}];
+      if (group_id == 0) {
         // This region field was never used in a previous task.
         // See if this requirement index was assigned a group in this task
+        // unless we want to force it to be a single region requirement
         group_id = requirement_to_group[idx];
-        if (group_id == 0){
-          // This is the first Store seen in this task for this requirement index
-          // without a previous mapping. This starts a new StoreMapping.
-          group_id = next_group_id_++;
+        if (group_id == 0) {
+          group_id                  = next_group_id_++;
           requirement_to_group[idx] = group_id;
-          group_to_mapping[group_id] = mappings.size();
-          mappings.push_back(StoreMapping::default_mapping(store, options.front()));
-        } else {
-          auto& mapping = mappings[group_to_mapping[group_id]];
-          mapping.stores.push_back(store);
-        }
-      } else {
-        // This was used in a previous task and therefore has an existing instance with other stores.
-        auto iter = group_to_mapping.find(group_id);
-        if (iter == group_to_mapping.end()){
-          // This is the first store from the group to be mapped in this task.
-          // Starts a new StoreMapping.
-          group_to_mapping[group_id] = mappings.size();
-          mappings.push_back(StoreMapping::default_mapping(store, options.front()));
-        } else {
-          // Another store from this group has already been seen for this task.
-          // Append this to the previous StoreMapping.
-          mappings[iter->second].stores.push_back(store);
         }
       }
-    };
-    for (auto& input : task.inputs()) { visit(input); }
-    for (auto& output : task.outputs()) { visit(output); }
 
-    for (auto& mapping : mappings){
-        mapping.policy.contiguous = config_.default_contiguous;
+      // This was used in a previous task and therefore has an existing instance with other stores.
+      auto iter = group_to_mapping.find({.group_id = group_id, .redop = store.redop()});
+      if (iter == group_to_mapping.end()) {
+        detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                     << " redop=" << store.redop() << " with idx=" << idx << " reusing group "
+                     << group_id << std::endl;
+        // This is the first store from the group to be mapped in this task.
+        // Starts a new StoreMapping.
+        group_to_mapping[{.group_id = group_id, .redop = store.redop()}] = mappings.size();
+        mappings.push_back(
+          StoreMapping::default_mapping(store, {.target = options.front(), .group_id = group_id}));
+      } else {
+        detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                     << " with idx=" << idx << " appended to prev group " << group_id
+                     << ", redop=" << store.redop() << std::endl;
+        // Another store from this group has already been seen for this task.
+        // Append this to the previous StoreMapping.
+        mappings[iter->second].stores.push_back(store);
+      }
+    };
+    for (auto& input : task.inputs()) { visit("input", input); }
+    for (auto& output : task.outputs()) { visit("output", output); }
+    for (auto& store : task.reductions()) {
+      if (!store.is_future()) { visit("reduction", store); }
+    }
+
+    for (auto& mapping : mappings) {
+      mapping.policy.contiguous = config_.default_contiguous;
+      mapping.policy.inorder    = config_.default_inorder;
     }
 
     return mappings;
@@ -231,8 +268,9 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task &task, const std
   for (auto& input : task.inputs()) { visit(input); }
   for (auto& output : task.outputs()) { visit(output); }
 
-  for (auto& mapping : mappings){
-      mapping.policy.contiguous = config_.default_contiguous;
+  for (auto& mapping : mappings) {
+    mapping.policy.contiguous = config_.default_contiguous;
+    mapping.policy.inorder    = config_.default_inorder;
   }
 
   return mappings;
@@ -542,7 +580,7 @@ void BaseMapper::map_task(const MapperContext ctx,
 
   output.chosen_instances.resize(task.regions.size());
   std::map<const RegionRequirement*, std::vector<PhysicalInstance>*> output_map;
-  for (uint32_t idx = 0; idx < task.regions.size(); ++idx){
+  for (uint32_t idx = 0; idx < task.regions.size(); ++idx) {
     output_map[&task.regions[idx]] = &output.chosen_instances[idx];
   }
 
@@ -597,6 +635,13 @@ void BaseMapper::map_legate_stores(const MapperContext ctx,
         local_instances->erase(result);
         result = NO_INST;
       }
+      for (auto& store : mapping.stores) {
+        auto field_id       = store.region_field().field_id();
+        auto tree_id        = store.region_field().get_requirement()->region.get_tree_id();
+        auto index_space_id = store.region_field().get_index_space().get_id();
+        detail_debug << "    store=" << index_space_id << "," << field_id << "," << tree_id
+                     << " using instance " << result.get_instance_id() << std::endl;
+      }
       instances.push_back(result);
     }
 
@@ -604,9 +649,7 @@ void BaseMapper::map_legate_stores(const MapperContext ctx,
     for (uint32_t idx = 0; idx < mappings.size(); ++idx) {
       auto& mapping  = mappings[idx];
       auto& instance = instances[idx];
-      for (const auto* req : mapping.requirements()){
-        output_map[req]->push_back(instance);
-      }
+      for (const auto* req : mapping.requirements()) { output_map[req]->push_back(instance); }
     }
     return true;
   };
@@ -682,6 +725,13 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
     }
   }
 
+  for (auto& store : mapping.stores) {
+    if (store.is_reduction() && redop == 0) {
+      detail_debug << "store has reduction " << store.redop()
+                   << " but region requirements have no reductions" << std::endl;
+    }
+  }
+
   // Generate layout constraints from the store mapping
   LayoutConstraintSet layout_constraints;
   mapping.populate_layout_constraints(layout_constraints);
@@ -751,15 +801,14 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
   AutoLock lock(ctx, local_instances->manager_lock());
   runtime->disable_reentrant(ctx);
   // See if we already have it in our local instances
-  if (fields.size() == 1 && regions.size() == 1 &&
-      local_instances->find_instance(
-        regions.front(), fields.front(), target_memory, result, policy)) {
+  auto opt_instance = local_instances->find_store_mapping(mapping, target_memory, regions, fields);
+  if (opt_instance.has_value()) {
+    result = *std::move(opt_instance);
 #ifdef DEBUG_LEGATE
     logger.debug() << "Operation " << mappable.get_unique_id() << ": reused cached instance "
-                   << result << " for " << regions.front();
+                   << result << " for mapping with first region" << regions.front();
 #endif
     runtime->enable_reentrant(ctx);
-    // Needs acquire to keep the runtime happy
     return true;
   }
 
@@ -781,11 +830,21 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
     regions = group->get_regions();
   }
 
+  // If the a single region field was not in the cache, we are not likely to find an existing
+  // instance in the Legion runtime. Switch to a MUST_ALLOC policy in this case
+  // to avoid a potentially expensive lookup in the Legion runtime.
+  AllocPolicy alloc_policy = [&] {
+    if (this->config_.force_alloc_on_single_fields && fields.size() == 1 && regions.size() == 1) {
+      return AllocPolicy::MUST_ALLOC;
+    }
+    return policy.allocation;
+  }();
+
   bool created     = false;
   bool success     = false;
   size_t footprint = 0;
 
-  switch (policy.allocation) {
+  switch (alloc_policy) {
     case AllocPolicy::MAY_ALLOC: {
       success = runtime->find_or_create_physical_instance(ctx,
                                                           target_memory,
@@ -800,6 +859,7 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
       break;
     }
     case AllocPolicy::MUST_ALLOC: {
+      created = true;
       success = runtime->create_physical_instance(ctx,
                                                   target_memory,
                                                   layout_constraints,
@@ -812,6 +872,18 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
       break;
     }
     default: LEGATE_ABORT;  // should never get here
+  }
+
+  if (created) {
+    detail_debug << "runtime created instance " << result.get_instance_id() << " for "
+                 << mapping.stores.size() << " stores on group " << mapping.group_id()
+                 << " for tree=" << result.get_tree_id() << " with " << regions.size() << " regions"
+                 << std::endl;
+  } else {
+    detail_debug << "runtime found instance for " << result.get_instance_id() << " for "
+                 << mapping.stores.size() << " stores on group " << mapping.group_id()
+                 << " for tree=" << result.get_tree_id() << " with " << regions.size() << " regions"
+                 << std::endl;
   }
 
   if (success) {
@@ -828,11 +900,16 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
     }
 #endif
     // Only save the result for future use if it is not an external instance
-    if (!result.is_external_instance() && group != nullptr) {
-      assert(fields.size() == 1);
-      auto fid = fields.front();
-      local_instances->record_instance(group, fid, result, policy);
+    if (!result.is_external_instance()) {
+      if (mapping.has_group()) {
+        local_instances->record_instance(mapping, target_memory, result);
+      } else if (group != nullptr) {
+        assert(fields.size() == 1);
+        auto fid = fields.front();
+        local_instances->record_instance(group, fid, result, policy);
+      }
     }
+
     runtime->enable_reentrant(ctx);
     // We made it so no need for an acquire
     return false;

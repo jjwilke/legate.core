@@ -16,6 +16,7 @@
 
 #include <numeric>
 
+#include "core/mapping/store.h"
 #include "legate.h"
 
 #include "core/mapping/mapping.h"
@@ -24,6 +25,8 @@ using namespace Legion;
 
 namespace legate {
 namespace mapping {
+
+Debug detail_debug;
 
 Memory::Kind get_memory_kind(StoreTarget target)
 {
@@ -189,7 +192,7 @@ void StoreMapping::populate_layout_constraints(
     }
   } else
     fields.push_back(stores.front().region_field().field_id());
-  layout_constraints.add_constraint(FieldConstraint(fields, policy.contiguous));
+  layout_constraints.add_constraint(FieldConstraint(fields, policy.contiguous, policy.inorder));
 }
 
 /*static*/ StoreMapping StoreMapping::default_mapping(const Store& store,
@@ -200,6 +203,14 @@ void StoreMapping::populate_layout_constraints(
   mapping.policy = InstanceMappingPolicy::default_policy(target, exact);
   mapping.stores.push_back(store);
   return std::move(mapping);
+}
+
+StoreMapping StoreMapping::default_mapping(const Store& store, const StoreMappingConfig& config)
+{
+  StoreMapping mapping(config.group_id);
+  mapping.policy = InstanceMappingPolicy::default_policy(config.target, config.exact);
+  mapping.stores.push_back(store);
+  return mapping;
 }
 
 }  // namespace mapping
