@@ -66,6 +66,11 @@ class Task : public Mappable {
  public:
   TaskTarget target() const;
 
+  Realm::Processor::id_t
+  target_proc_id() const {
+    return task_->target_proc.id;
+  }
+
  private:
   const LibraryContext& library_;
   const Legion::Task* task_;

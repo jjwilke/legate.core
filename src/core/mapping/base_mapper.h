@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <realm/processor.h>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -336,12 +337,12 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
     uint32_t tree_id;
     uint32_t index_space_id;
     Legion::FieldID field_id;
-    int redop{0};
+    Realm::Processor::id_t proc_id;
 
     bool operator==(const StoreCacheId& other) const
     {
       return other.field_id == field_id && other.index_space_id == index_space_id &&
-             other.tree_id == tree_id && other.redop == redop;
+             other.tree_id == tree_id && other.proc_id == proc_id;
     }
   };
 
@@ -350,7 +351,7 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
     {
       size_t hash = store_hash_combine(0, id.tree_id);
       hash        = store_hash_combine(hash, id.field_id);
-      hash        = store_hash_combine(hash, id.redop);
+      hash        = store_hash_combine(hash, id.proc_id);
       return store_hash_combine(hash, id.index_space_id);
     }
   };

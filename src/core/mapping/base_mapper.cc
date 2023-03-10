@@ -199,10 +199,10 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task& task,
       auto index_space_id = store.region_field().get_index_space().get_id();
       auto tree_id        = store.region_field().get_requirement()->region.get_tree_id();
       detail_debug << "map store " << index_space_id << "," << field_id << "," << tree_id
-                   << " for redop=" << store.redop() << std::endl;
+                   << " for proc=" << task.target_proc_id() << std::endl;
 
       uint32_t& group_id =
-        groups_[{.tree_id = tree_id, .index_space_id = index_space_id, .field_id = field_id}];
+        groups_[{.tree_id = tree_id, .index_space_id = index_space_id, .field_id = field_id, .proc_id = task.target_proc_id()}];
       if (group_id == 0) {
         // This region field was never used in a previous task.
         // See if this requirement index was assigned a group in this task
@@ -211,13 +211,28 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task& task,
         if (group_id == 0) {
           group_id                  = next_group_id_++;
           requirement_to_group[idx] = group_id;
+          detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                      << " proc=" << task.target_proc_id()
+                      << " redop=" << store.redop() << " with idx=" << idx << " made new group "
+                      << group_id << std::endl;
+        } else {
+          detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                      << " proc=" << task.target_proc_id()
+                      << " redop=" << store.redop() << " with idx=" << idx << " is part of new group "
+                      << group_id << std::endl;
         }
+      } else {
+          detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                      << " proc=" << task.target_proc_id()
+                      << " redop=" << store.redop() << " with idx=" << idx << " is part of pre-existing group "
+                      << group_id << std::endl;
       }
 
       // This was used in a previous task and therefore has an existing instance with other stores.
       auto iter = group_to_mapping.find({.group_id = group_id, .redop = store.redop()});
       if (iter == group_to_mapping.end()) {
         detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                     << " proc=" << task.target_proc_id()
                      << " redop=" << store.redop() << " with idx=" << idx << " reusing group "
                      << group_id << std::endl;
         // This is the first store from the group to be mapped in this task.
@@ -227,6 +242,7 @@ std::vector<StoreMapping> BaseMapper::store_mappings(const Task& task,
           StoreMapping::default_mapping(store, {.target = options.front(), .group_id = group_id}));
       } else {
         detail_debug << type << " store " << index_space_id << "," << field_id << "," << tree_id
+                     << " proc=" << task.target_proc_id()
                      << " with idx=" << idx << " appended to prev group " << group_id
                      << ", redop=" << store.redop() << std::endl;
         // Another store from this group has already been seen for this task.
@@ -789,6 +805,12 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
           reduction_instances->record_instance(redop, regions.front(), fid, result, policy);
         }
       }
+
+      detail_debug << "runtime created reduction instance " << result.get_instance_id() << " for "
+                  << mapping.stores.size() << " stores on group " << mapping.group_id()
+                  << " for tree=" << result.get_tree_id() << " with " << regions.size() << " regions"
+                  << std::endl;
+
       runtime->enable_reentrant(ctx);
       // We already did the acquire
       return false;
