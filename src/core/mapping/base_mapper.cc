@@ -459,7 +459,6 @@ void BaseMapper::map_task(const MapperContext ctx,
                           const MapTaskInput& input,
                           MapTaskOutput& output)
 {
-  auto start = std::chrono::high_resolution_clock::now();
 #ifdef DEBUG_LEGATE
   logger.debug() << "Entering map_task for " << Utilities::to_string(runtime, ctx, task);
 #endif
@@ -602,9 +601,6 @@ void BaseMapper::map_task(const MapperContext ctx,
   }
 
   map_legate_stores(ctx, task, for_stores, task.target_proc, output_map);
-  auto end                           = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> diff = end - start;
-  std::cerr << "map_task " << task.get_provenance_string() << " ran for " << diff.count() << "s\n";
 }
 
 void BaseMapper::map_replicate_task(const MapperContext ctx,
