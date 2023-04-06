@@ -569,7 +569,7 @@ void BaseMapper::map_task(const MapperContext ctx,
     for (auto& mapping : mappings) {
       StoreTarget target = mapping.policy.target;
 #ifdef LEGATE_NO_FUTURES_ON_FB
-      if (target == StoreTarget::FBMEM) target = StoreTarget::ZCMEM;
+      //if (target == StoreTarget::FBMEM) target = StoreTarget::ZCMEM;
 #endif
       output.future_locations.push_back(machine->get_memory(task.target_proc, target));
     }
@@ -901,6 +901,16 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
                  << mapping.stores.size() << " stores on group " << mapping.group_id()
                  << " for tree=" << result.get_tree_id() << " with " << regions.size() << " regions"
                  << std::endl;
+
+    for (const Store& store : mapping.stores){
+      auto iter = stores_mapped_.find(store);
+      if (iter != stores_mapped_.end()){
+        std::cerr << "Creating store twice" << std::endl;
+        abort();
+      }
+      stores_mapped_.insert(store);
+    }
+    std::cout << "Created instance of size " << footprint << std::endl;
   } else {
     detail_debug << "runtime found instance for " << result.get_instance_id() << " for "
                  << mapping.stores.size() << " stores on group " << mapping.group_id()

@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "legion.h"
 
@@ -333,6 +334,26 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
  private:
   std::string mapper_name;
 
+  struct HashStore {
+    size_t operator()(const Store& store) const {
+        auto field_id       = store.region_field().field_id();
+        auto tree_id        = store.region_field().get_requirement()->region.get_tree_id();
+        auto index_space_id = store.region_field().get_index_space().get_id();
+        auto hash = store_hash_combine(0, field_id);
+        hash = store_hash_combine(hash, tree_id);
+        return store_hash_combine(hash, index_space_id);
+    }
+  };
+
+  struct StoreEquals {
+    bool operator()(const Store& lhs, const Store& rhs) const {
+      bool fields = lhs.region_field().field_id() == rhs.region_field().field_id();
+      bool trees = lhs.region_field().get_requirement()->region.get_tree_id() == rhs.region_field().get_requirement()->region.get_tree_id();
+      bool index = lhs.region_field().get_index_space().get_id() == rhs.region_field().get_requirement()->region.get_tree_id();
+      return fields && trees && index;
+    }
+  };
+
   struct StoreCacheId {
     uint32_t tree_id;
     uint32_t index_space_id;
@@ -358,6 +379,7 @@ class BaseMapper : public Legion::Mapping::Mapper, public LegateMapper {
 
   BaseMapperConfig config_;
   std::unordered_map<StoreCacheId, uint32_t, HashStoreCacheId> groups_;
+  std::unordered_set<Store, HashStore, StoreEquals> stores_mapped_;
   uint32_t next_group_id_;
 
  protected:
