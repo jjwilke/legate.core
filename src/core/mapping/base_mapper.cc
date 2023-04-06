@@ -914,7 +914,7 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
     }
     total_allocated += footprint;
     std::cout << "Created instance on " << this << " of size " << footprint
-              << ", total=" << total_allocated << std::endl;
+              << ", total=" << total_allocated << " for " << mappable.get_provenance_string() << std::endl;
   } else {
     detail_debug << "runtime found instance for " << result.get_instance_id() << " for "
                  << mapping.stores.size() << " stores on group " << mapping.group_id()
