@@ -719,6 +719,8 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
                                   PhysicalInstance& result,
                                   bool can_fail)
 {
+  static size_t total_allocated = 0;
+
   if (reqs.empty()) return false;
 
   const auto& policy = mapping.policy;
@@ -910,7 +912,9 @@ bool BaseMapper::map_legate_store(const MapperContext ctx,
       }
       stores_mapped_.insert(store);
     }
-    std::cout << "Created instance of size " << footprint << std::endl;
+    total_allocated += footprint;
+    std::cout << "Created instance on " << this << " of size " << footprint
+              << ", total=" << total_allocated << std::endl;
   } else {
     detail_debug << "runtime found instance for " << result.get_instance_id() << " for "
                  << mapping.stores.size() << " stores on group " << mapping.group_id()
