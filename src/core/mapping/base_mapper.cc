@@ -167,6 +167,11 @@ void BaseMapper::select_task_options(const Legion::Mapping::MapperContext ctx,
 
   auto target      = legate_mapper_->task_target(legate_task, options);
   auto local_range = machine.slice(target, machine_desc);
+  if (local_range.empty()){
+    std::cerr << "machine is empty slice: " << task.get_task_name() << "[" << task.get_provenance_string()
+      << "]: " << machine_desc << std::endl;
+    LEGATE_ABORT;
+  }
 #ifdef DEBUG_LEGATE
   assert(!local_range.empty());
 #endif
