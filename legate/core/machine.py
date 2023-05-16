@@ -133,7 +133,7 @@ class ProcessorRange:
             )
         return (
             self.low // self.per_node_count,
-            self.high // self.per_node_count,
+            (self.high + self.per_node_count - 1) // self.per_node_count,
         )
 
     def __repr__(self) -> str:
@@ -221,7 +221,7 @@ class Machine:
         if isinstance(key, ProcessorKind):
             return self.only(key)
         elif isinstance(key, (slice, int)):
-            if len(self._proc_ranges.keys()) > 1:
+            if len(self._non_empty_kinds) > 1:
                 raise ValueError(
                     "Ambiguous slicing: slicing is not allowed on a machine "
                     "with more than one processor kind"
@@ -286,10 +286,10 @@ class Machine:
         return f"Machine({desc})"
 
     def pack(self, buf: BufferBuilder) -> None:
-        buf.pack_32bit_uint(self._preferred_kind)
+        buf.pack_32bit_int(self._preferred_kind)
         buf.pack_32bit_uint(len(self._proc_ranges))
         for kind, proc_range in self._proc_ranges.items():
-            buf.pack_32bit_uint(kind)
+            buf.pack_32bit_int(kind)
             proc_range.pack(buf)
 
     def __enter__(self) -> None:

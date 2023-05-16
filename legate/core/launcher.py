@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import IntEnum, unique
 from itertools import chain
 from typing import (
@@ -55,6 +56,16 @@ if TYPE_CHECKING:
 
 
 LegionOp = Union[IndexTask, SingleTask, IndexCopy, SingleCopy]
+
+
+@dataclass(frozen=True)
+class ParallelExecutionResult:
+    """
+    Result from a parallel task launch
+    """
+
+    future_map: FutureMap
+    output_partitions: dict[Store, LegionPartition]
 
 
 @unique
@@ -147,7 +158,7 @@ class FutureStoreArg:
         buf.pack_32bit_int(self._redop)
         buf.pack_bool(self._read_only)
         buf.pack_bool(self._has_storage)
-        buf.pack_32bit_int(self._store.type.size)
+        buf.pack_32bit_uint(self._store.type.size)
         extents = self._store.extents
         buf.pack_32bit_uint(len(extents))
         for extent in extents:
@@ -671,6 +682,14 @@ class OutputAnalyzer(RequirementIndexer):
             for field_id, store in group:
                 req.update_storage(store, field_id)
 
+    def collect_partitions(self) -> dict[Store, LegionPartition]:
+        result = dict()
+        for req, group in self._groups.items():
+            for _, store in group:
+                assert req.output_region
+                result[store] = req.output_region.get_partition()
+        return result
+
 
 # A simple analyzer that does not coalesce requirements
 class CopyReqAnalyzer(RequirementIndexer):
@@ -977,12 +996,16 @@ class TaskLauncher:
         self.set_mapper_arg(task)
         return task
 
-    def execute(self, launch_domain: Rect) -> FutureMap:
+    def execute(self, launch_domain: Rect) -> ParallelExecutionResult:
         task = self.build_task(launch_domain, BufferBuilder())
         result = self._context.dispatch(task)
         assert isinstance(result, FutureMap)
         self._out_analyzer.update_storages()
-        return result
+        out_partitions = self._out_analyzer.collect_partitions()
+        return ParallelExecutionResult(
+            future_map=result,
+            output_partitions=out_partitions,
+        )
 
     def execute_single(self) -> Future:
         argbuf = BufferBuilder()
