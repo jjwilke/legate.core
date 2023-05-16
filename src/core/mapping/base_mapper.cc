@@ -285,6 +285,11 @@ void BaseMapper::map_task(const Legion::Mapping::MapperContext ctx,
   else {
     // If this is a single task, here is the right place to compute the final target processor
     auto local_range = machine.slice(legate_task.target(), legate_task.machine_desc());
+    if (local_range.empty()){
+      std::cerr << "machine is empty slice: " << task.get_task_name() << "[" << task.get_provenance_string()
+        << "]: " << legate_task.machine_desc() << std::endl;
+      LEGATE_ABORT;
+    }
     output.target_procs.push_back(local_range.first());
   }
 
