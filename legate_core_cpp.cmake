@@ -519,3 +519,8 @@ if (legate_core_EXAMPLE_BUILD_TESTS)
 endif()
 set(legate_core_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(tests/integration)
+
+option(legate_core_ENABLE_UnitTest OFF)
+if (legate_core_ENABLE_UnitTest)
+  add_subdirectory(tests/gtest)
+endif()
