@@ -286,6 +286,12 @@ void BaseMapper::map_task(const Legion::Mapping::MapperContext ctx,
     // If this is a single task, here is the right place to compute the final target processor
     auto local_range = machine.slice(legate_task.target(), legate_task.machine_desc());
     if (local_range.empty()){
+      auto iter = legate_task.machine_desc().processor_ranges.find(legate_task.target());
+      if (iter == legate_task.machine_desc().processor_ranges.end()){
+        std::cerr << "no matches for target" << std::endl;
+      } else {
+        std::cerr << "failed getting local range: " << iter->second.to_string() << std::endl;
+      }
       std::cerr << "machine is empty slice: " << task.get_task_name() << "[" << task.get_provenance_string()
         << "]: " << legate_task.machine_desc() << std::endl;
       LEGATE_ABORT;
@@ -715,6 +721,7 @@ bool BaseMapper::map_legate_store(const Legion::Mapping::MapperContext ctx,
                      << " for " << *group;
     }
 #endif
+    logger.info() << "Task " << mappable.get_provenance_string() << " created instance of size " << footprint;
     // Only save the result for future use if it is not an external instance
     if (!result.is_external_instance() && group != nullptr) {
       assert(fields.size() == 1);
