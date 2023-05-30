@@ -721,7 +721,12 @@ bool BaseMapper::map_legate_store(const Legion::Mapping::MapperContext ctx,
                      << " for " << *group;
     }
 #endif
-    logger.info() << "Task " << mappable.get_provenance_string() << " created instance of size " << footprint;
+    const auto& store = mapping.stores.front().get();
+    auto field_id       = store.region_field().field_id();
+    auto tree_id        = store.region_field().get_requirement()->region.get_tree_id();
+    auto index_space_id = store.region_field().get_index_space().get_id();
+    logger.info() << "Task " << mappable.get_provenance_string() << " created instance of size "
+      << footprint << " for tree=" << tree_id << " field=" << field_id << " index=" << index_space_id;
     // Only save the result for future use if it is not an external instance
     if (!result.is_external_instance() && group != nullptr) {
       assert(fields.size() == 1);
