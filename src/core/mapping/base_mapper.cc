@@ -152,6 +152,11 @@ void BaseMapper::select_task_options(const Legion::Mapping::MapperContext ctx,
 #endif
 
   Task legate_task(&task, context, runtime, ctx);
+
+  logger.info() << "Mapping task " << task.get_task_name() << ": " << task.get_provenance_string()
+      << " with " << legate_task.inputs().size() << " inputs "
+      << " and " << legate_task.outputs().size() << " ouputs";
+
   auto& machine_desc = legate_task.machine_desc();
   auto all_targets   = machine_desc.valid_targets();
 
