@@ -1,0 +1,73 @@
+name: legate-test
+channels:
+  - conda-forge
+dependencies:
+
+  - python>=3.11
+
+  # build
+  - cython>=3.0.1
+  - elfutils
+  - git
+  - gperftools
+  - hdf5
+  - libhwloc=*=*default*
+  - make
+  - ninja
+  - numba
+  - openssl
+  - pkg-config
+  - rust
+  - scikit-build>=0.13.1
+  - setuptools>60,<=75.3.0
+  - zlib
+
+  # runtime
+  - llvm-openmp
+  - numpy>=1.22,!=2.1.0
+  - libblas=*=*openblas*
+  - openblas=*=*openmp*
+  - openblas<=0.3.21
+  - opt_einsum
+  - scipy
+  - libhwloc=*=*default*
+  - hdf5
+  - h5py
+  - zarr<3
+
+  # tests
+  - clang-tools>=8
+  - clang>=8
+  - coverage
+  - libhwloc=*=*default*
+  - mock
+  - mypy>=0.961
+  - pre-commit
+  - psutil
+  - nvidia-ml-py
+  - pytest-cov
+  - pytest-mock
+  - pytest
+  - rich
+  - tifffile
+  - types-docutils
+
+  # docs
+  - pandoc
+  - doxygen
+  - ipython
+  - jinja2
+  - markdown
+
+  - pip
+  - pip:
+    # docs
+    - breathe>=4.35.0
+    - myst-parser
+    - nbsphinx
+    - nvidia-sphinx-theme
+    - sphinx>=8.2
+    - sphinx-copybutton
+
+
+
